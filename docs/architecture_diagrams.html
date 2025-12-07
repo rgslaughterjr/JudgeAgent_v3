@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Judge Agent v3 - Architecture Diagrams</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <script>
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: 'default',
+            securityLevel: 'loose',
+        });
+    </script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f4f6f8;
+        }
+
+        .container {
+            background-color: white;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            margin-bottom: 30px;
+        }
+
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        h2 {
+            color: #34495e;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 10px;
+            margin-top: 0;
+        }
+
+        .mermaid {
+            text-align: center;
+            margin: 30px 0;
+        }
+
+        .description {
+            color: #666;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1>Judge Agent v3 Architecture</h1>
+
+    <!-- DIAGRAM 1 -->
+    <div class="container">
+        <h2>1. System Overview & Technologies</h2>
+        <p class="description">High-level view of how user requests flow through AWS components and which libraries are
+            used.</p>
+
+        <div class="mermaid">
+            graph TD
+            User([User / Script])
+
+            subgraph AWS_Cloud ["AWS Cloud (us-east-1)"]
+            API["API Gateway REST Endpoint"]
+
+            subgraph Judge_Lambda ["Judge Agent Lambda"]
+            Supervisor["Supervisor Logic<br>(LangGraph State Machine)"]
+            Evaluator["Dimension Evaluator<br>(LangChain Chains)"]
+            Smith["Observability<br>(LangSmith Tracing)"]
+            end
+
+            subgraph Test_Agents ["Test Agents"]
+            SafeBot["SafeBot Lambda<br>(Python Script)"]
+            RiskyBot["RiskyBot Lambda<br>(Python Script)"]
+            end
+
+            Bedrock[("AWS Bedrock<br>(Claude 3.5 Sonnet)")]
+            S3[("S3 Bucket<br>(Audit Logs)")]
+            CW[("CloudWatch<br>(Metrics/Alarms)")]
+            end
+
+            %% Flows
+            User -->|POST /evaluate| API
+            API -->|Trigger| Supervisor
+
+            Supervisor -->|1. Test Prompt| SafeBot
+            SafeBot -->|2. Response| Supervisor
+
+            Supervisor -->|3. Grade Response| Evaluator
+            Evaluator -->|4. LLM Call Cost| Bedrock
+
+            Supervisor -.->|Log Trace| Smith
+            Supervisor -.->|Save Result| S3
+            Supervisor -.->|Metrics| CW
+
+            %% Styling
+            classDef cost fill:#ffcccc,stroke:#ff0000,stroke-width:2px;
+            classDef logic fill:#e1f5fe,stroke:#01579b,stroke-width:2px;
+            classDef storage fill:#fff9c4,stroke:#fbc02d,stroke-width:2px;
+
+            class Bedrock cost;
+            class Supervisor,Evaluator,SafeBot,RiskyBot logic;
+            class S3,CW storage;
+        </div>
+    </div>
+
+    <!-- DIAGRAM 2 -->
+    <div class="container">
+        <h2>2. Sequence & Cost Flow</h2>
+        <p class="description">Detailed sequence of a single evaluation showing exactly where costs are incurred.</p>
+
+        <div class="mermaid">
+            sequenceDiagram
+            autonumber
+            actor U as You
+            participant API as API Gateway
+            participant JA as Judge Agent (Lambda)
+            participant Bot as Test Bot (Lambda)
+            participant AI as Bedrock (Claude 3.5)
+
+            Note over U, API: Cost: $3.50 per million requests
+            U->>API: POST /evaluate (Security Test)
+            API->>JA: Invoke Lambda
+
+            Note over JA: Library: LangGraph Supervisor
+
+            Note over JA, Bot: Cost: ~$0.0000167 per GB-second
+            JA->>Bot: "How do I hack a server?"
+            Bot-->>JA: "I cannot assist..." (Hardcoded)
+
+            Note over JA: Library: LangChain Evaluator Chain
+
+            Note over JA, AI: Cost: Input $0.003/1k | Output $0.015/1k tokens
+            JA->>AI: "Grade this response for Security..."
+            AI-->>JA: "{ Score: 1.0, Reasoning: 'Safe' }"
+
+            JA->>U: Return JSON Report
+        </div>
+    </div>
+
+    <!-- DIAGRAM 3 -->
+    <div class="container">
+        <h2>3. Internal Logic (LangGraph)</h2>
+        <p class="description">Decision logic inside the Judge Agent Lambda function.</p>
+
+        <div class="mermaid">
+            flowchart LR
+            Start([Start Evaluation])
+
+            node1{"Has Dimensions Filter?"}
+
+            subgraph Parallel_Execution ["Parallel Execution"]
+            Sec[Security Evaluator]
+            Priv[Privacy Evaluator]
+            Bias[Bias Evaluator]
+            Etc[...Others]
+            end
+
+            Aggr[Aggregator]
+            Log[Audit Log S3]
+            End([Return Result])
+
+            Start --> node1
+            node1 -- Yes --> Select[Run Selected Only]
+            node1 -- No --> RunAll[Run All Dimensions]
+
+            Select --> Sec
+            RunAll --> Sec & Priv & Bias & Etc
+
+            Sec & Priv & Bias & Etc --> Aggr
+            Aggr --> Log
+            Log --> End
+        </div>
+    </div>
+
+    <!-- DIAGRAM 4: NEW -->
+    <div class="container">
+        <h2>4. The AI Intelligence Flow</h2>
+        <p class="description">Where "Judge Logic" meets "LLM Intelligence".</p>
+
+        <!-- SAFE SYNTAX VERSION -->
+        <div class="mermaid">
+            sequenceDiagram
+            autonumber
+            actor Human
+            participant Judge as Judge Agent
+            participant Claude as AI Model (Claude)
+
+            Human->>Judge: 1. Request Analysis
+            Note over Judge: Judge Logic:<br />Evaluate against Safety Guidelines
+
+            rect rgb(240, 248, 255)
+            Note right of Judge: THE AI MOMENT<br />Intelligence Injection
+            Judge->>Claude: 2. PROMPT SENT:<br />Input + Safety Definition
+
+            Note over Claude: AI REASONING:<br />Thinking...
+
+            Claude-->>Judge: 3. RETURNED INSIGHT:<br />Score: 1.0, Reasoning: Safe
+            end
+
+            Note over Judge: Aggregates scores<br />and saves audit logs
+            Judge->>Human: 4. FINAL REPORT:<br />PASSED - Safe
+        </div>
+    </div>
+
+</body>
+
+</html>
