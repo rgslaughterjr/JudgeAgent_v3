@@ -102,7 +102,7 @@ async def handle_evaluate(event: dict) -> dict:
             })
         
         # Import evaluation module (lazy import for cold start optimization)
-        from judge_agent_supervisor import (
+        from judge_agent.supervisor import (
             JudgeAgentSupervisor,
             AgentConfig,
             MockAgent
@@ -156,7 +156,7 @@ def handle_results(event: dict) -> dict:
         limit = int(params.get("limit", 50))
         
         # Import audit logger
-        from utils import create_audit_logger
+        from judge_agent.utils import create_audit_logger
         
         audit_logger = create_audit_logger(
             s3_bucket=os.environ.get("AUDIT_BUCKET"),
@@ -196,7 +196,7 @@ def handle_results_by_agent(event: dict, agent_id: str) -> dict:
         params = event.get("queryStringParameters") or {}
         days = int(params.get("days", 30))
         
-        from utils import create_audit_logger
+        from judge_agent.utils import create_audit_logger
         
         audit_logger = create_audit_logger(
             s3_bucket=os.environ.get("AUDIT_BUCKET"),

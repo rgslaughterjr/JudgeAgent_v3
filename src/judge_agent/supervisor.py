@@ -41,7 +41,7 @@ from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 
 # Import utility functions
-from utils import (
+from judge_agent.utils import (
     extract_json,
     retry_async,
     is_error_result,

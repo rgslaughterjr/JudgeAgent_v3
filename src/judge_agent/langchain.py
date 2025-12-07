@@ -35,7 +35,7 @@ from langgraph.graph import StateGraph, END
 from langgraph.graph.message import add_messages
 
 # Import utility functions
-from utils import extract_json, retry_async
+from judge_agent.utils import extract_json, retry_async
 
 # ============================================================================
 # CONFIGURATION

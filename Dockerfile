@@ -7,17 +7,14 @@ FROM public.ecr.aws/lambda/python:3.11
 WORKDIR ${LAMBDA_TASK_ROOT}
 
 # Copy requirements first for layer caching
-COPY requirements_langchain.txt .
+COPY requirements.txt .
 
 # Install dependencies
-RUN pip install --no-cache-dir -r requirements_langchain.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
-COPY judge_agent_langchain.py .
-COPY judge_agent_supervisor.py .
-COPY judge_agent_enhanced_dimensions.py .
+# Copy application code - new src/ structure
+COPY src/judge_agent ./judge_agent/
 COPY lambda/lambda_handler.py .
-COPY utils/ ./utils/
 
 # Set the handler
 CMD ["lambda_handler.handler"]

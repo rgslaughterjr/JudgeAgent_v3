@@ -21,15 +21,15 @@ import plotly.graph_objects as go
 import pandas as pd
 
 # Add parent directory to path for imports
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"))
 
-from judge_agent_supervisor import (
+from judge_agent.supervisor import (
     JudgeAgentSupervisor,
     AgentConfig,
     MockAgent,
     EvaluationDimension
 )
-from utils import create_audit_logger, AuditLogger
+from judge_agent.utils import create_audit_logger, AuditLogger
 
 
 # ============================================================================

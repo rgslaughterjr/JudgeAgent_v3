@@ -26,7 +26,7 @@ from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 
 # Import utility functions
-from utils import (
+from judge_agent.utils import (
     extract_json,
     retry_async,
     is_error_result,
