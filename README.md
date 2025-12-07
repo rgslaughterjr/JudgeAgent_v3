@@ -30,24 +30,41 @@ python -c "from judge_agent_supervisor import JudgeAgentSupervisor; print('Ready
 
 ## Architecture
 
+### Repository Structure
+
+```
+JudgeAgent_v3/
+├── src/judge_agent/        # Core Python package
+│   ├── __init__.py
+│   ├── langchain.py        # Core LangChain/LangGraph implementation
+│   ├── supervisor.py       # Parallel supervisor architecture
+│   ├── enhanced_dimensions.py  # Specialized evaluators
+│   └── utils/              # Utility modules
+├── tests/                  # All test files
+├── app/                    # Streamlit UI
+├── docs/                   # Additional documentation
+├── infrastructure/         # AWS CDK stack
+├── lambda/                 # Lambda handler
+└── scripts/                # Deployment scripts
+```
+
 ### Core Modules
 
-| File | Purpose |
-|------|---------|
-| `judge_agent_langchain.py` | Core LangChain/LangGraph implementation |
-| `judge_agent_supervisor.py` | Parallel supervisor for concurrent evaluation |
-| `judge_agent_enhanced_dimensions.py` | Specialized evaluators for 5 enhanced dimensions |
-| `streamlit_app.py` | Interactive dashboard UI |
+| Module | Purpose |
+|--------|---------|
+| `judge_agent.langchain` | Core LangChain/LangGraph implementation |
+| `judge_agent.supervisor` | Parallel supervisor for concurrent evaluation |
+| `judge_agent.enhanced_dimensions` | Specialized evaluators (Performance, UX, Bias, Harm, Guardrails) |
 
-### Utilities (`utils/`)
+### Utilities (`judge_agent.utils`)
 
 | Utility | Purpose |
 |---------|---------|
-| `json_parser.py` | Robust JSON extraction from LLM responses |
-| `retry.py` | Async retry decorator with exponential backoff |
-| `pii_sanitizer.py` | PII generation and redaction |
-| `audit_log.py` | JSONL audit logging (local + S3) |
-| `observability.py` | LangSmith tracing, metrics collection |
+| `json_parser` | Robust JSON extraction from LLM responses |
+| `retry` | Async retry decorator with exponential backoff |
+| `pii_sanitizer` | PII generation and redaction |
+| `audit_log` | JSONL audit logging (local + S3) |
+| `observability` | LangSmith tracing, metrics collection |
 
 ## Evaluation Dimensions
 
