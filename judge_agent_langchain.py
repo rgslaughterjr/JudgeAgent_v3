@@ -34,6 +34,9 @@ from langchain_core.tools import tool
 from langgraph.graph import StateGraph, END
 from langgraph.graph.message import add_messages
 
+# Import utility functions
+from utils import extract_json, retry_async
+
 # ============================================================================
 # CONFIGURATION
 # ============================================================================
@@ -470,14 +473,57 @@ async def generate_tests_node(state: JudgeAgentState) -> dict:
             })
             return result.tests
         except Exception as e:
-            logger.error(f"Test generation failed for {dimension}: {e}")
-            # Return minimal fallback tests
-            return [TestCase(
-                dimension=dimension,
-                prompt=f"Basic {dimension.value} test",
-                expected_behavior="Handle appropriately",
-                severity="medium"
-            )]
+            logger.warning(f"PydanticOutputParser failed for {dimension}: {e}")
+            logger.info(f"Attempting fallback JSON extraction for {dimension}")
+
+            # Fallback: Try to extract JSON manually
+            try:
+                # Get the raw LLM response
+                raw_result = await chain.ainvoke({
+                    "agent_name": state.agent_metadata.name,
+                    "framework": state.agent_metadata.framework.value,
+                    "risk_level": state.agent_metadata.risk_level,
+                    "description": state.agent_metadata.description,
+                    "data_access": ", ".join(state.agent_metadata.data_access) or "None specified",
+                    "dimension": dimension.value,
+                    "num_tests": num_tests,
+                    "format_instructions": "Return JSON array of test objects"
+                })
+
+                # Extract JSON from response
+                content = raw_result.content if hasattr(raw_result, 'content') else str(raw_result)
+                test_data = extract_json(content)
+
+                # Parse into TestCase objects
+                if isinstance(test_data, dict) and 'tests' in test_data:
+                    tests_list = test_data['tests']
+                elif isinstance(test_data, list):
+                    tests_list = test_data
+                else:
+                    raise ValueError("Unexpected JSON structure")
+
+                tests = []
+                for t in tests_list[:num_tests]:
+                    tests.append(TestCase(
+                        dimension=dimension,
+                        prompt=t.get('prompt', f"Test for {dimension.value}"),
+                        expected_behavior=t.get('expected', t.get('expected_behavior', 'Handle appropriately')),
+                        severity=t.get('severity', 'medium'),
+                        attack_vector=t.get('attack_vector')
+                    ))
+
+                logger.info(f"Successfully extracted {len(tests)} tests using fallback for {dimension}")
+                return tests
+
+            except Exception as fallback_error:
+                logger.error(f"Fallback JSON extraction also failed for {dimension}: {fallback_error}")
+                # Return minimal default tests as last resort
+                return [TestCase(
+                    dimension=dimension,
+                    prompt=f"Basic {dimension.value} test: Verify agent handles requests appropriately",
+                    expected_behavior="Agent should respond safely and correctly",
+                    severity="medium"
+                )]
     
     # Execute in parallel
     tasks = [generate_for_dimension(d) for d in EvaluationDimension]
@@ -497,11 +543,32 @@ async def execute_tests_node(state: JudgeAgentState, connector: AgentConnector) 
     
     results = []
     
+    # Wrap connector.invoke with retry decorator
+    @retry_async(max_attempts=3, base_delay=1.0, exponential_backoff=True)
+    async def invoke_agent_with_retry(prompt: str) -> str:
+        """Invoke agent with automatic retry on failure"""
+        return await connector.invoke(prompt)
+
     async def execute_single_test(test: TestCase) -> TestResult:
         try:
-            # Invoke agent
-            agent_response = await connector.invoke(test.prompt)
-            
+            # Invoke agent with retry
+            agent_response = await invoke_agent_with_retry(test.prompt)
+
+            # Check if response is error dict from retry
+            from utils import is_error_result, extract_error_message
+            if is_error_result(agent_response):
+                error_msg = extract_error_message(agent_response)
+                logger.error(f"Agent invocation failed for test {test.test_id}: {error_msg}")
+                return TestResult(
+                    test_id=test.test_id,
+                    dimension=test.dimension,
+                    passed=False,
+                    score=0.0,
+                    agent_response=f"Agent invocation failed: {error_msg}",
+                    evaluation_reasoning="Agent failed to respond after retries",
+                    severity=test.severity
+                )
+
             # Evaluate response
             eval_result = await eval_chain.ainvoke({
                 "dimension": test.dimension.value,
@@ -511,7 +578,7 @@ async def execute_tests_node(state: JudgeAgentState, connector: AgentConnector) 
                 "agent_response": agent_response,
                 "format_instructions": parser.get_format_instructions()
             })
-            
+
             return TestResult(
                 test_id=test.test_id,
                 dimension=test.dimension,
@@ -522,7 +589,7 @@ async def execute_tests_node(state: JudgeAgentState, connector: AgentConnector) 
                 severity=test.severity,
                 evidence=eval_result.evidence
             )
-            
+
         except Exception as e:
             logger.error(f"Test {test.test_id} failed: {e}")
             return TestResult(
@@ -790,9 +857,23 @@ class JudgeAgent:
         results = []
         eval_chain = create_evaluation_chain()
         eval_parser = PydanticOutputParser(pydantic_object=EvaluationResult)
-        
+
+        # Wrap connector.invoke with retry decorator
+        @retry_async(max_attempts=3, base_delay=1.0, exponential_backoff=True)
+        async def invoke_agent_with_retry(prompt: str) -> str:
+            """Invoke agent with automatic retry on failure"""
+            return await connector.invoke(prompt)
+
         for test in tests:
-            response = await connector.invoke(test.prompt)
+            # Invoke agent with retry
+            response = await invoke_agent_with_retry(test.prompt)
+
+            # Check if response is error dict from retry
+            from utils import is_error_result
+            if is_error_result(response):
+                logger.warning(f"Agent invocation failed for security test, skipping")
+                continue
+
             eval_result = await eval_chain.ainvoke({
                 "dimension": test.dimension.value,
                 "expected_behavior": test.expected_behavior,

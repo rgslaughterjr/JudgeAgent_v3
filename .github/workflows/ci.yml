@@ -1,0 +1,81 @@
+name: CI - Test and Lint
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11"]
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements_langchain.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements_langchain.txt
+          pip install pytest pytest-asyncio pytest-cov black flake8
+      
+      - name: Lint with flake8
+        run: |
+          # Stop the build if there are Python syntax errors or undefined names
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --exclude=.git,__pycache__,venv,.venv
+          # Exit-zero treats all errors as warnings
+          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=120 --statistics --exclude=.git,__pycache__,venv,.venv
+      
+      - name: Check formatting with black
+        run: |
+          black --check --diff . --exclude '/(\.git|__pycache__|venv|\.venv)/'
+        continue-on-error: true
+      
+      - name: Run unit tests
+        run: |
+          pytest test_*.py -v --tb=short --cov=. --cov-report=xml
+        env:
+          AWS_REGION: us-east-1
+          AWS_ACCESS_KEY_ID: testing
+          AWS_SECRET_ACCESS_KEY: testing
+      
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage.xml
+          fail_ci_if_error: false
+      
+      - name: Verify Python syntax
+        run: |
+          python -m py_compile judge_agent_langchain.py
+          python -m py_compile judge_agent_supervisor.py
+          python -m py_compile judge_agent_enhanced_dimensions.py
+          python -m py_compile lambda/lambda_handler.py
+
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Run Bandit security linter
+        uses: PyCQA/bandit-action@v1
+        with:
+          severity: medium
+          exclude: tests,test_*.py
+        continue-on-error: true
