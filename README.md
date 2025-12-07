@@ -18,15 +18,22 @@ Judge Agent v3 systematically evaluates AI agents across **8 critical dimensions
 ## Quick Start
 
 ```bash
+# Clone the repository
+git clone https://github.com/rgslaughterjr/JudgeAgent_v3.git
+cd JudgeAgent_v3
+
 # Install dependencies
-pip install -r requirements_langchain.txt
+pip install -r requirements.txt
 
 # Run Streamlit dashboard
-streamlit run streamlit_app.py
+streamlit run app/streamlit_app.py
 
-# Or use programmatically
-python -c "from judge_agent_supervisor import JudgeAgentSupervisor; print('Ready!')"
+# Or use programmatically (add src to PYTHONPATH)
+export PYTHONPATH="${PYTHONPATH}:$(pwd)/src"
+python -c "from judge_agent import JudgeAgentSupervisor; print('Ready!')"
 ```
+
+> **Note**: Requires AWS credentials configured for Bedrock access. See [AWS Deployment](#aws-deployment).
 
 ## Architecture
 
@@ -34,18 +41,19 @@ python -c "from judge_agent_supervisor import JudgeAgentSupervisor; print('Ready
 
 ```
 JudgeAgent_v3/
-├── src/judge_agent/        # Core Python package
-│   ├── __init__.py
-│   ├── langchain.py        # Core LangChain/LangGraph implementation
-│   ├── supervisor.py       # Parallel supervisor architecture
-│   ├── enhanced_dimensions.py  # Specialized evaluators
-│   └── utils/              # Utility modules
-├── tests/                  # All test files
-├── app/                    # Streamlit UI
-├── docs/                   # Additional documentation
-├── infrastructure/         # AWS CDK stack
-├── lambda/                 # Lambda handler
-└── scripts/                # Deployment scripts
+├── src/judge_agent/           # Core Python package
+│   ├── __init__.py            # Package exports
+│   ├── langchain.py           # Core LangChain/LangGraph implementation
+│   ├── supervisor.py          # Parallel supervisor architecture
+│   ├── enhanced_dimensions.py # Specialized evaluators
+│   └── utils/                 # Utility modules
+├── tests/                     # All test files
+├── app/                       # Streamlit UI
+├── docs/                      # Additional documentation
+├── examples/                  # Example scripts
+├── infrastructure/            # AWS CDK stack
+├── lambda/                    # Lambda handler
+└── scripts/                   # Deployment scripts
 ```
 
 ### Core Modules
@@ -96,7 +104,11 @@ The Harm Prevention evaluator uniquely distinguishes control types:
 ### Programmatic Evaluation
 
 ```python
-from judge_agent_supervisor import JudgeAgentSupervisor, AgentConfig, MockAgent
+import asyncio
+import sys
+sys.path.insert(0, "src")  # Add src to path
+
+from judge_agent.supervisor import JudgeAgentSupervisor, AgentConfig, MockAgent
 
 # Configure agent to evaluate
 config = AgentConfig(
@@ -108,12 +120,12 @@ config = AgentConfig(
     data_access=["customer_db", "order_history"]
 )
 
-# Create connector (use MockAgent for testing)
+# Create connector (use MockAgent for testing, or implement your own)
 connector = MockAgent()
 
 # Run evaluation
 judge = JudgeAgentSupervisor(connector)
-result = await judge.evaluate_parallel(config, evaluator_user="admin@company.com")
+result = asyncio.run(judge.evaluate_parallel(config, evaluator_user="admin@company.com"))
 
 print(f"Overall Score: {result['overall_score']:.1%}")
 print(f"Production Ready: {result['passes_gate']}")
@@ -122,7 +134,7 @@ print(f"Production Ready: {result['passes_gate']}")
 ### Streamlit Dashboard
 
 ```bash
-streamlit run streamlit_app.py
+streamlit run app/streamlit_app.py
 ```
 
 Features:
@@ -133,6 +145,12 @@ Features:
 - ⚖️ **Compare**: Side-by-side agent comparison
 
 ## AWS Deployment
+
+### Prerequisites
+
+- AWS CLI configured with credentials
+- AWS CDK installed (`npm install -g aws-cdk`)
+- Bedrock access enabled in your AWS account
 
 ### CDK Deployment
 
@@ -165,6 +183,8 @@ GitHub Actions workflows included:
 - `.github/workflows/ci.yml` - Testing, linting, security scan
 - `.github/workflows/deploy.yml` - CDK deployment to AWS
 
+> **Note**: Configure GitHub secrets for CI/CD to work in your fork.
+
 ## Configuration
 
 | Environment Variable | Default | Description |
@@ -179,24 +199,26 @@ GitHub Actions workflows included:
 ## Testing
 
 ```bash
-# Run all tests
-pytest test_*.py -v
+# Install dev dependencies
+pip install pytest pytest-asyncio pytest-cov
 
-# Run specific test file
-pytest test_judge_agent.py -v
+# Run all tests
+pytest tests/ -v
+
+# Run with coverage
+pytest tests/ -v --cov=src/judge_agent
 ```
 
 ## Requirements
 
 - Python 3.10+
 - AWS account with Bedrock access
-- LangChain, LangGraph, Pydantic v2
-- See `requirements_langchain.txt` for full list
+- See `requirements.txt` for full dependency list
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for how to extend this project.
 
 ## License
 
 MIT
-
-## Contributing
-
-Contributions welcome! Please open an issue or PR.
